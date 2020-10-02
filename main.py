@@ -1,41 +1,22 @@
 """
 <ns:CabinClass
-	- Type (Seat, Kitchen, Bathroom, etc)
+	[x] Type (Seat, Kitchen, Bathroom, etc)
     - <ns:RowInfo <ns:SeatInfo <ns:Features> text()
-	- Seat id (17A, 18A)
+	[x] Seat id (17A, 18A)
     - <ns:RowInfo <ns:SeatInfo <ns:Summary SeatNumber
-	- Seat price
+	[x] Seat price
     - <ns:RowInfo <ns:SeatInfo <ns:Service <ns:Fee Amount
-	- Cabin class
+	[x] Cabin class
     - <ns:RowInfo CabinType
-	- Availability
+	[x] Availability
     - <ns:RowInfo <ns:SeatInfo <ns:Summary AvailableInd
   - And any other properties you might find interesting or useful.
     -
 
-CabinClass [0]
-  RowInfo [2]
-    SeatInfo [4]
-    SeatInfo [4]
-CabinClass [1]
-  RowInfo [27] 7 - 39
-    SeatInfo []
 """
 
 from lxml import etree
 import json
-
-# result = []
-# tree = etree.parse('OTA_AirSeatMapRS.xml')
-
-# cabin = tree.xpath('//ns:CabinClass', namespaces={
-#   'ns': 'http://www.opentravel.org/OTA/2003/05/common/'
-#   })
-
-# for c in cabin[0]:
-#   print "---", etree.QName(c).localname, "---"
-#   for c1 in c[0]:
-#     print etree.QName(c1).localname
 
 class ParseXML:
   def __init__(self, source, target):
@@ -50,16 +31,34 @@ class ParseXML:
       'ns': 'http://www.opentravel.org/OTA/2003/05/common/'
       })
 
+    SEATS = {
+      'Aisle': True,
+      'Center': True,
+      'Window': True
+    }
+
     for cabinClass in cabin:
       new_cabin = []
       for row in cabinClass:
-        new_row = {'cabinType': row.attrib['CabinType']}
+        new_row = {
+          'cabinType': row.attrib['CabinType'],
+          'seatLayout': cabinClass.attrib['Layout'],
+          'seats': []}
         for e in row:
             if etree.QName(e).localname == 'Characteristics':
-              print "\n", e.text ,"\n"
-              new_row[]
+              new_row['rowType'] = e.text
             else:
-              print e
+              new_seat = {}
+              for seat_child in e:
+                if etree.QName(seat_child).localname == 'Summary':
+                  new_seat['available'] = bool(seat_child.attrib['AvailableInd'] == 'true')
+                  new_seat['seatId'] = seat_child.attrib['SeatNumber']
+                elif etree.QName(seat_child).localname == 'Features':
+                  if seat_child.text in SEATS.keys():
+                    new_seat['position'] = seat_child.text
+                elif etree.QName(seat_child).localname == 'Service':
+                  new_seat['price'] = int(seat_child[0].attrib['Amount'])
+              new_row['seats'].append(new_seat)
         new_cabin.append(new_row)
       self.data.append(new_cabin)
     self.saveJson()
