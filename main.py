@@ -4,7 +4,7 @@ import json
 class ParseXML:
   data = {'cabins': {}}
 
-  def __init__(self, source, target, tagRef):
+  def __init__(self, source, target, tagRef, namespaces):
     self.tagRef = {
       'cabin': tagRef['cabin'],
       'row': tagRef['row'],
@@ -15,10 +15,7 @@ class ParseXML:
     }
     self.tree = etree.parse(source)
     self.target = target
-    self.namespaces = {
-    'ns': 'http://www.opentravel.org/OTA/2003/05/common/',
-    're': 'http://exslt.org/regular-expressions'
-    }
+    self.namespaces = namespaces
 
   def main(self):
     self.buildCabins()
@@ -48,6 +45,11 @@ class ParseXML:
         'seatId': self.getPath(seat,'./{self.tagRef[seatSummary]}/@SeatNumber'.format(**locals()))[0]
       }
 
+      # limited recline
+      limited_recline = self.getPath(seat,'./{self.tagRef[features]}/@extension="Limited Recline"'.format(**locals()))
+      if limited_recline:
+        new_seat['limitedRecline'] = True
+
       # type
       seat_positions = ["Window", "Center", "Aisle"]
       seatsRegex = "^"+'|'.join(seat_positions)+"$"
@@ -59,11 +61,13 @@ class ParseXML:
       else:
         new_seat['type'] = self.getPath(seat,'.//{self.tagRef[features]}/@extension'.format(**locals()))[0]
 
-      # price
-      price = self.getPath(seat,'.//{self.tagRef[fee]}/@Amount'.format(**locals()))
-      if price:
-        new_seat['price'] = price[0]
+      # price if seat available
+      if new_seat['available']:
+        price = self.getPath(seat,'.//{self.tagRef[fee]}/@Amount'.format(**locals()))
+        if price:
+          new_seat['price'] = price[0]
 
+      # get cabin type from parent, for inserting into json
       cabinType = self.getPath(seat,'./parent::{self.tagRef[row]}/@CabinType'.format(**locals()))[0]
       self.data['cabins'][cabinType]['seats'].append(new_seat)
 
@@ -84,8 +88,13 @@ tagRef = {
   'seat': 'ns:SeatInfo',
   'seatSummary': 'ns:Summary',
   'features': 'ns:Features',
-  'fee': 'ns:Fee'
+  'fee': 'ns:Fee',
+  'status': 'ns:Status'
+}
+namespaces = {
+  'ns': 'http://www.opentravel.org/OTA/2003/05/common/',
+  're': 'http://exslt.org/regular-expressions'
 }
 
-parser = ParseXML(source, target, tagRef)
+parser = ParseXML(source, target, tagRef, namespaces)
 parser.main()
