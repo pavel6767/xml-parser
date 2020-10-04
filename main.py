@@ -1,67 +1,73 @@
 from lxml import etree
 import json
-
+tagRef = {
+  'cabin': 'ns:CabinClass'
+}
 class ParseXML:
-  def __init__(self, source, target):
-    self.data = {'cabins': {}}
-    self.source = source
-    self.target = target
+  data = {'cabins': {}}
 
-  def main(self):
-    tree = etree.parse(self.source)
-    # TODO modularize this
-    regexpNS = "http://exslt.org/regular-expressions"
-    namespaces = {
+  def __init__(self, source, target):
+    # self.tagRef = {
+    #   'cabin': tagRef.cabin,
+
+    # }
+    self.tree = etree.parse(source)
+    self.target = target
+    self.namespaces = {
     'ns': 'http://www.opentravel.org/OTA/2003/05/common/',
-    're':regexpNS
+    're': 'http://exslt.org/regular-expressions'
     }
 
+  def main(self):
+    self.buildCabins()
+    self.buildSeats()
+    print 'success'
+    # self.saveJson()
 
-    cabins = tree.xpath('//ns:CabinClass',namespaces=namespaces)
+  def buildCabins(self):
+    # cabins = self.getPath(tree,'//{self.tagRef[cabin]}'.format(**locals()))
+    cabins = self.getPath(self.tree,'//ns:CabinClass')
     for cabin in cabins:
       # build cabin types
-      cabinType = cabin.xpath('./ns:RowInfo[1]/@CabinType',namespaces=namespaces)[0]
+      cabinType = self.getPath(cabin,'./ns:RowInfo[1]/@CabinType')[0]
       self.data['cabins'][cabinType] = {
         'layout': cabin.attrib['Layout'],
         'seats': []
       }
-
+  def buildSeats(self):
     # build seats
-    seats = tree.xpath('//ns:SeatInfo',namespaces=namespaces)
+    seats = self.getPath(self.tree,'//ns:SeatInfo')
     for seat in seats:
-      summary = seat.xpath('./ns:Summary',namespaces=namespaces)
+      summary = self.getPath(seat,'./ns:Summary')
 
       # base info
       new_seat = {
         'exitRow': bool(seat.attrib['ExitRowInd'] == 'true'),
-        'available': bool(seat.xpath('./ns:Summary/@AvailableInd',namespaces=namespaces)[0] == 'true'),
-        'seatId': seat.xpath('./ns:Summary/@SeatNumber',namespaces=namespaces)[0]
+        'available': bool(self.getPath(seat,'./ns:Summary/@AvailableInd')[0] == 'true'),
+        'seatId': self.getPath(seat,'./ns:Summary/@SeatNumber')[0]
       }
 
       # type
-      seat_positions = ["Window", "Center", "Aisle"] # extract-var
+      seat_positions = ["Window", "Center", "Aisle"]
       seatsRegex = "^"+'|'.join(seat_positions)+"$"
-      query = "./ns:Features[re:test(text(), $seatsRegex)]/text()"
-      seatType = seat.xpath(query, seatsRegex=seatsRegex,namespaces=namespaces)
+      query = "./ns:Features[re:test(text(), $regex)]/text()"
+      seatType = self.getPath(seat,query, seatsRegex)
 
       if seatType:
         new_seat['type'] = seatType[0]
       else:
-        seatType = new_seat['type'] = seat.xpath('.//ns:Features/@extension',namespaces=namespaces)[0]
-
+        new_seat['type'] = self.getPath(seat,'.//ns:Features/@extension')[0]
 
       # price
-      price = seat.xpath('.//ns:Fee/@Amount',namespaces=namespaces)
+      price = self.getPath(seat,'.//ns:Fee/@Amount')
       if price:
         new_seat['price'] = price[0]
 
-      cabinType = seat.xpath('./parent::ns:RowInfo/@CabinType',namespaces=namespaces)[0]
+      cabinType = self.getPath(seat,'./parent::ns:RowInfo/@CabinType')[0]
       self.data['cabins'][cabinType]['seats'].append(new_seat)
 
-    self.saveJson()
-
-  def getPath(self,query):
-    print "hi"
+  def getPath(self,element,query, regex = None):
+    return element.xpath(query, regex=regex,namespaces=self.namespaces)
 
   def saveJson(self):
     with open(self.target, 'w') as outfile:
